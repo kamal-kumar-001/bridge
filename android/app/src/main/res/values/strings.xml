@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Bridge</string>
+    <string name="service_notification_title">Bridge Active</string>
+    <string name="service_notification_connected">Connected to %1$s</string>
+    <string name="service_notification_waiting">Ready to connect (Wi-Fi / Hotspot)</string>
+    <string name="action_sync_clipboard">Sync Clipboard</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="share_sheet_title">Send via Bridge</string>
+</resources>
