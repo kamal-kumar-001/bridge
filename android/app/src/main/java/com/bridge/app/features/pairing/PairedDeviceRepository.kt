@@ -55,6 +55,13 @@ class PairedDeviceRepository(context: Context) {
         }
     }
 
+    fun fingerprint(deviceId: String): String? = prefs.getString("pin_$deviceId", null)
+
+    fun trust(device: PeerDevice, fingerprint: String) {
+        prefs.edit().putString("pin_${device.id}", fingerprint).commit()
+        addOrUpdatePairedDevice(device)
+    }
+
     fun isDevicePaired(deviceId: String): Boolean {
         return _pairedDevices.value.any { it.id == deviceId }
     }
@@ -67,6 +74,7 @@ class PairedDeviceRepository(context: Context) {
     }
 
     fun revokeDevice(deviceId: String) {
+        prefs.edit().remove("pin_$deviceId").commit()
         val current = _pairedDevices.value.filter { it.id != deviceId }
         _pairedDevices.value = current
         saveDevices(current)

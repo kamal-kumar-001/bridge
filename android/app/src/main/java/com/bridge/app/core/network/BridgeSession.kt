@@ -37,8 +37,32 @@ class BridgeSession(
     val isConnected: Boolean
         get() = socket.isConnected && !socket.isClosed && _connectionStatus.value == ConnectionStatus.CONNECTED
 
-    fun start() {
+    @Volatile var authenticated: Boolean = false
+        private set
+    var peerFingerprint: String = ""
+        private set
+    var verificationCode: String = ""
+        private set
+    private val localNonce = com.bridge.app.core.crypto.CryptoEngine.generateNonce()
+    private var started = false
+
+    fun authorize() {
+        authenticated = true
+        _connectionStatus.value = ConnectionStatus.CONNECTED
+    }
+
+    @Synchronized fun start() {
+        if (started) return
+        started = true
+        scope.launch { startTransport() }
+    }
+
+    private fun startTransport() {
         try {
+            val tls = socket as javax.net.ssl.SSLSocket
+            socket.soTimeout = 15000
+            tls.startHandshake()
+            peerFingerprint = com.bridge.app.core.crypto.TlsIdentity.fingerprint(tls.session.peerCertificates[0])
             socket.tcpNoDelay = true
             socket.soTimeout = 30000 // 30 sec read timeout for heartbeat
             inputStream = socket.getInputStream()
@@ -50,7 +74,8 @@ class BridgeSession(
                 deviceName = localDeviceName,
                 deviceType = DeviceType.PHONE,
                 osType = OSType.ANDROID,
-                supportedFeatures = listOf("CLIPBOARD", "FILE_TRANSFER")
+                supportedFeatures = listOf("CLIPBOARD", "FILE_TRANSFER"),
+                nonce = localNonce
             )
             sendMessage(hello)
 
@@ -81,13 +106,19 @@ class BridgeSession(
                     is PacketCodec.IncomingFrame.JsonFrame -> {
                         val msg = BridgeProtocol.decodeMessage(frame.jsonString)
                         if (msg != null) {
+                            if (!authenticated && msg !is HelloMessage && msg !is HelloAckMessage &&
+                                msg !is PairRequestMessage && msg !is PairResponseMessage &&
+                                msg !is PingMessage && msg !is PongMessage && msg !is DisconnectMessage) {
+                                throw SecurityException("Pairing required")
+                            }
                             handleInternalMessage(msg)
                             onMessageReceived(this@BridgeSession, msg)
                         } else {
-                            Log.w(tag, "Unrecognized JSON message: ${frame.jsonString}")
+                            throw IllegalArgumentException("Invalid control message")
                         }
                     }
                     is PacketCodec.IncomingFrame.FileChunkFrame -> {
+                        check(authenticated) { "Pairing required" }
                         onChunkReceived(this@BridgeSession, frame.transferId, frame.offset, frame.data)
                     }
                     is PacketCodec.IncomingFrame.UnknownFrame -> {
@@ -107,6 +138,12 @@ class BridgeSession(
     private fun handleInternalMessage(msg: BridgeMessage) {
         when (msg) {
             is HelloMessage -> {
+                check(peerDevice == null && msg.version == 2 && msg.nonce.matches(Regex("[0-9a-f]{32}")) && msg.deviceId.length in 1..128 && msg.deviceName.length <= 100) { "Invalid or legacy handshake" }
+                val tls = socket as javax.net.ssl.SSLSocket
+                val localFingerprint = com.bridge.app.core.crypto.TlsIdentity.fingerprint(tls.session.localCertificates[0])
+                val transcript = listOf(localFingerprint + ":" + localNonce, peerFingerprint + ":" + msg.nonce).sorted().joinToString("|")
+                val hash = java.security.MessageDigest.getInstance("SHA-256").digest(transcript.toByteArray(Charsets.UTF_8))
+                verificationCode = "%06d".format((java.nio.ByteBuffer.wrap(hash).int.toLong() and 0xffffffffL) % 1000000)
                 val peer = PeerDevice(
                     id = msg.deviceId,
                     name = msg.deviceName,
@@ -126,24 +163,10 @@ class BridgeSession(
                     isPaired = peer.isPaired
                 )
                 sendMessage(ack)
-                _connectionStatus.value = ConnectionStatus.CONNECTED
+                _connectionStatus.value = ConnectionStatus.PAIRING
                 Log.d(tag, "Received HELLO from ${peer.name} (${peer.osType}). Sent HELLO_ACK.")
             }
-            is HelloAckMessage -> {
-                val peer = PeerDevice(
-                    id = msg.deviceId,
-                    name = msg.deviceName,
-                    osType = msg.osType,
-                    deviceType = msg.deviceType,
-                    host = socket.inetAddress.hostAddress ?: socket.inetAddress.hostName,
-                    port = socket.port,
-                    isPaired = msg.isPaired,
-                    lastSeenTimestamp = System.currentTimeMillis()
-                )
-                this.peerDevice = peer
-                _connectionStatus.value = ConnectionStatus.CONNECTED
-                Log.d(tag, "Connected and handshake complete with ${peer.name} (${peer.osType})")
-            }
+            is HelloAckMessage -> { check(msg.version == 2) { "Legacy peer refused" } }
             is PingMessage -> {
                 sendMessage(PongMessage(timestamp = System.currentTimeMillis()))
             }
@@ -157,13 +180,16 @@ class BridgeSession(
     private suspend fun heartbeatLoop() = withContext(Dispatchers.IO) {
         while (scope.isActive && !socket.isClosed) {
             delay(10000)
-            if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
+            if (_connectionStatus.value == ConnectionStatus.CONNECTED || _connectionStatus.value == ConnectionStatus.PAIRING) {
                 sendMessage(PingMessage(timestamp = System.currentTimeMillis()))
             }
         }
     }
 
     fun sendMessage(message: BridgeMessage) {
+        if (!authenticated && message !is HelloMessage && message !is HelloAckMessage &&
+            message !is PairRequestMessage && message !is PairResponseMessage &&
+            message !is PingMessage && message !is PongMessage && message !is DisconnectMessage) return
         val out = outputStream ?: return
         try {
             val jsonBytes = BridgeProtocol.encodeMessage(message)
@@ -175,6 +201,7 @@ class BridgeSession(
     }
 
     fun sendChunk(transferId: UUID, offset: Long, chunk: ByteArray, length: Int) {
+        check(authenticated) { "Pairing required" }
         val out = outputStream ?: return
         try {
             PacketCodec.writeChunkFrame(out, transferId, offset, chunk, length)
@@ -186,6 +213,7 @@ class BridgeSession(
 
     fun close() {
         if (_connectionStatus.value == ConnectionStatus.DISCONNECTED) return
+        authenticated = false
         _connectionStatus.value = ConnectionStatus.DISCONNECTED
         scope.cancel()
         try {

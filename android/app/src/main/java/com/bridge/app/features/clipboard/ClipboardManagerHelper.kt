@@ -16,7 +16,7 @@ class ClipboardManagerHelper(private val context: Context) {
 
     private val seenHashes = ConcurrentHashMap.newKeySet<String>()
     private var lastSyncedHash: String? = null
-    private var isSyncEnabled = true
+    private var isSyncEnabled = false
 
     fun setSyncEnabled(enabled: Boolean) {
         this.isSyncEnabled = enabled
@@ -38,7 +38,7 @@ class ClipboardManagerHelper(private val context: Context) {
                     }
 
                     recordHash(hash)
-                    Log.d(tag, "Local clipboard copied: ${text.take(30)}... [hash=$hash]")
+
                     onTextCopied(text, hash)
                 }
             } catch (e: Exception) {
@@ -48,7 +48,6 @@ class ClipboardManagerHelper(private val context: Context) {
     }
 
     fun setSystemClipboard(text: String, hash: String) {
-        if (!isSyncEnabled) return
         if (seenHashes.contains(hash)) return
 
         recordHash(hash)
@@ -56,7 +55,7 @@ class ClipboardManagerHelper(private val context: Context) {
             try {
                 val clip = ClipData.newPlainText("Bridge", text)
                 clipboardManager.setPrimaryClip(clip)
-                Log.d(tag, "Pushed incoming text to Android clipboard: ${text.take(30)}...")
+
             } catch (e: Exception) {
                 Log.e(tag, "Error writing to clipboard", e)
             }

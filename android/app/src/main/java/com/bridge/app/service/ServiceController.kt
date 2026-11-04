@@ -56,6 +56,7 @@ class ServiceController private constructor(private val appContext: Context) {
     private val bridgeClient = BridgeClient(keyStoreManager.deviceId, keyStoreManager.deviceName)
 
     fun start() {
+        keyStoreManager.getOrCreateIdentityKeyPair()
         Log.d(tag, "Starting ServiceController")
         startServer()
         startDiscovery()
@@ -66,7 +67,10 @@ class ServiceController private constructor(private val appContext: Context) {
         bridgeServer = BridgeServer(
             localDeviceId = keyStoreManager.deviceId,
             localDeviceName = keyStoreManager.deviceName,
-            port = BridgeProtocol.DEFAULT_PORT
+            port = BridgeProtocol.DEFAULT_PORT,
+            onMessageReceived = { s, msg -> handleMessage(s, msg) },
+            onChunkReceived = { s, tid, offset, data -> if (s.authenticated) fileTransferManager.handleIncomingChunk(tid, offset, data) },
+            onDisconnected = { s -> scope.launch { onSessionDisconnected(s) } }
         ) { session ->
             handleIncomingSession(session)
         }.also { it.start() }
@@ -95,7 +99,7 @@ class ServiceController private constructor(private val appContext: Context) {
                 port = device.port,
                 onMessageReceived = { s, msg -> handleMessage(s, msg) },
                 onChunkReceived = { s, tid, offset, data -> fileTransferManager.handleIncomingChunk(tid, offset, data) },
-                onDisconnected = { s -> onSessionDisconnected(s) }
+                onDisconnected = { s -> scope.launch { onSessionDisconnected(s) } }
             )
 
             result.onSuccess { session ->
@@ -107,7 +111,11 @@ class ServiceController private constructor(private val appContext: Context) {
     }
 
     private fun attachSession(session: BridgeSession) {
-        _activeSession.value?.close()
+        val current = _activeSession.value
+        if (current != null && current.connectionStatus.value != ConnectionStatus.DISCONNECTED) {
+            session.close()
+            return
+        }
         _activeSession.value = session
 
         scope.launch {
@@ -130,6 +138,7 @@ class ServiceController private constructor(private val appContext: Context) {
     private fun handleMessage(session: BridgeSession, msg: BridgeMessage) {
         when (msg) {
             is HelloMessage -> {
+                pairingManager.onHandshake(session)
                 _connectedDevice.value = session.peerDevice
             }
             is HelloAckMessage -> {
@@ -153,19 +162,35 @@ class ServiceController private constructor(private val appContext: Context) {
             is FileCompleteMessage -> {
                 fileTransferManager.handleComplete(msg)
             }
+            is FileRejectMessage -> { fileTransferManager.cancelTransfer(msg.transferId, notifyPeer = false) }
             is FileCancelMessage -> {
-                fileTransferManager.cancelTransfer(msg.transferId)
+                fileTransferManager.cancelTransfer(msg.transferId, notifyPeer = false)
             }
             else -> {}
         }
     }
 
     private fun onSessionDisconnected(session: BridgeSession) {
+        pairingManager.clear(session)
+        fileTransferManager.onDisconnected()
         if (_activeSession.value == session) {
             _activeSession.value = null
             _connectedDevice.value = null
             _connectionStatus.value = ConnectionStatus.DISCONNECTED
         }
+    }
+
+    fun revokeDevice(deviceId: String) {
+        pairedDeviceRepo.revokeDevice(deviceId)
+        if (_activeSession.value?.peerDevice?.id == deviceId) disconnect()
+    }
+
+    fun stop() {
+        disconnect()
+        bridgeServer?.stop()
+        bridgeServer = null
+        discoveryCoordinator.stopDiscovery()
+        discoveryCoordinator.unregisterService()
     }
 
     fun disconnect() {

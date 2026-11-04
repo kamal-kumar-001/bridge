@@ -11,7 +11,7 @@ object PacketCodec {
     const val FRAME_FILE_CHUNK: Byte = 0x02
     const val FRAME_ENCRYPTED: Byte = 0x03
 
-    const val MAX_FRAME_SIZE = 100 * 1024 * 1024 // 100MB bound
+    const val MAX_FRAME_SIZE = 1024 * 1024 // 1 MiB control-frame bound
 
     fun writeJsonFrame(output: OutputStream, jsonBytes: ByteArray) {
         val totalLength = jsonBytes.size + 1 // +1 for frame type
@@ -33,6 +33,7 @@ object PacketCodec {
         chunkBytes: ByteArray,
         chunkLen: Int
     ) {
+        require(offset >= 0 && chunkLen in 1..65536 && chunkLen <= chunkBytes.size)
         val headerLen = 16 + 8 + 4 // UUID(16) + offset(8) + chunkLen(4)
         val totalLength = 1 + headerLen + chunkLen
         val header = ByteBuffer.allocate(5 + headerLen).order(ByteOrder.BIG_ENDIAN)
@@ -78,6 +79,7 @@ object PacketCodec {
                 IncomingFrame.JsonFrame(String(jsonBuf, Charsets.UTF_8))
             }
             FRAME_FILE_CHUNK -> {
+                require(payloadLen in 29..(28 + 65536)) { "Invalid chunk frame size" }
                 val chunkHeader = ByteArray(28) // 16 + 8 + 4
                 if (!readExact(input, chunkHeader, 28)) return null
                 val bb = ByteBuffer.wrap(chunkHeader).order(ByteOrder.BIG_ENDIAN)
@@ -85,6 +87,7 @@ object PacketCodec {
                 val lsb = bb.long
                 val offset = bb.long
                 val chunkLen = bb.int
+                require(offset >= 0 && chunkLen in 1..65536 && payloadLen == 28 + chunkLen) { "Invalid chunk length" }
                 val transferId = UUID(msb, lsb)
 
                 val dataBuf = ByteArray(chunkLen)

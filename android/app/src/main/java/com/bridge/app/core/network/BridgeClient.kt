@@ -22,7 +22,8 @@ class BridgeClient(
     ): Result<BridgeSession> = withContext(Dispatchers.IO) {
         try {
             Log.d(tag, "Connecting to peer at $host:$port...")
-            val socket = Socket()
+            val socket = com.bridge.app.core.crypto.TlsIdentity.context().socketFactory.createSocket() as javax.net.ssl.SSLSocket
+            socket.enabledProtocols = arrayOf("TLSv1.2")
             socket.connect(InetSocketAddress(host, port), timeoutMs)
 
             val session = BridgeSession(
@@ -34,7 +35,6 @@ class BridgeClient(
                 onChunkReceived = onChunkReceived,
                 onDisconnected = onDisconnected
             )
-            session.start()
             Result.success(session)
         } catch (e: Exception) {
             Log.e(tag, "Failed to connect to $host:$port", e)

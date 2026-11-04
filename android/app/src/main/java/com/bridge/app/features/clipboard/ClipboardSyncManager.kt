@@ -2,6 +2,7 @@ package com.bridge.app.features.clipboard
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.flow.asStateFlow
 import com.bridge.app.core.crypto.CryptoEngine
 import com.bridge.app.core.model.ClipboardTextMessage
 import com.bridge.app.core.network.BridgeSession
@@ -11,10 +12,19 @@ class ClipboardSyncManager(
     private val localDeviceId: String,
     private val getActiveSession: () -> BridgeSession?
 ) {
+    private val prefs = context.getSharedPreferences("bridge_sync", Context.MODE_PRIVATE)
+    private val _enabled = kotlinx.coroutines.flow.MutableStateFlow(prefs.getBoolean("enabled", false))
+    val enabled = _enabled.asStateFlow()
+    fun setEnabled(value: Boolean) {
+        _enabled.value = value
+        prefs.edit().putBoolean("enabled", value).apply()
+        helper.setSyncEnabled(value)
+    }
     private val tag = "ClipboardSyncManager"
     val helper = ClipboardManagerHelper(context)
 
     init {
+        helper.setSyncEnabled(_enabled.value)
         helper.startListening { text, hash ->
             broadcastClipboard(text, hash)
         }
@@ -22,7 +32,7 @@ class ClipboardSyncManager(
 
     fun broadcastClipboard(text: String, hash: String? = null) {
         val session = getActiveSession() ?: return
-        if (!session.isConnected) return
+        if (!session.authenticated || text.toByteArray().size > 256 * 1024) return
 
         val finalHash = hash ?: CryptoEngine.sha256Hex(text)
         val msg = ClipboardTextMessage(
@@ -36,7 +46,7 @@ class ClipboardSyncManager(
     }
 
     fun handleIncomingClipboard(msg: ClipboardTextMessage) {
-        if (msg.sourceDeviceId == localDeviceId) return
+        if (msg.sourceDeviceId == localDeviceId || msg.content.toByteArray().size > 256 * 1024 || CryptoEngine.sha256Hex(msg.content) != msg.hash) return
         helper.setSystemClipboard(msg.content, msg.hash)
     }
 

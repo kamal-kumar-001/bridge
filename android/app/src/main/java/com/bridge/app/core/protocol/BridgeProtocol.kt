@@ -9,7 +9,7 @@ import kotlinx.serialization.modules.subclass
 object BridgeProtocol {
     const val SERVICE_TYPE = "_bridge._tcp"
     const val DEFAULT_PORT = 52431
-    const val PROTOCOL_VERSION = 1
+    const val PROTOCOL_VERSION = 2
 
     private val module = SerializersModule {
         polymorphic(BridgeMessage::class) {

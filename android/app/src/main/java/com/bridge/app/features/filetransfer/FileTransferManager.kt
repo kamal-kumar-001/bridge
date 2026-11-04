@@ -19,6 +19,10 @@ class FileTransferManager(
     private val context: Context,
     private val getActiveSession: () -> BridgeSession?
 ) {
+    data class IncomingOffer(val message: FileOfferMessage, val session: BridgeSession)
+    private val _pendingOffer = MutableStateFlow<IncomingOffer?>(null)
+    val pendingOffer = _pendingOffer.asStateFlow()
+
     private val tag = "FileTransferManager"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val storageHelper = StorageHelper(context)
@@ -32,7 +36,7 @@ class FileTransferManager(
     private val activeJobs = ConcurrentHashMap<String, Job>()
 
     fun sendFile(uri: Uri, mimeType: String = "application/octet-stream"): String? {
-        val session = getActiveSession() ?: run {
+        val session = getActiveSession()?.takeIf { it.authenticated } ?: run {
             Log.e(tag, "Cannot send file: no active session")
             return null
         }
@@ -67,6 +71,27 @@ class FileTransferManager(
     }
 
     fun handleIncomingOffer(msg: FileOfferMessage, session: BridgeSession) {
+        if (!session.authenticated || msg.fileSize !in 0..(2L * 1024 * 1024 * 1024) ||
+            _pendingOffer.value != null || incomingFileHandles.isNotEmpty() || transferMap.containsKey(msg.transferId)) {
+            session.sendMessage(FileRejectMessage(transferId = msg.transferId, reason = "BUSY_OR_INVALID")); return
+        }
+        try {
+            UUID.fromString(msg.transferId)
+            storageHelper.prepareDestinationFile(msg.fileName)
+        } catch (e: Exception) {
+            session.sendMessage(FileRejectMessage(transferId = msg.transferId, reason = "INVALID_OFFER")); return
+        }
+        _pendingOffer.value = IncomingOffer(msg, session)
+    }
+
+    fun respondToOffer(accepted: Boolean) {
+        val pending = _pendingOffer.value ?: return
+        _pendingOffer.value = null
+        val msg = pending.message
+        val session = pending.session
+        if (!accepted || !session.authenticated) {
+            session.sendMessage(FileRejectMessage(transferId = msg.transferId)); return
+        }
         val destFile = storageHelper.prepareDestinationFile(msg.fileName)
         val transfer = FileTransfer(
             id = msg.transferId,
@@ -98,6 +123,7 @@ class FileTransferManager(
     }
 
     fun handleAccept(msg: FileAcceptMessage, session: BridgeSession) {
+        if (!session.authenticated || msg.offset != 0L || activeJobs.containsKey(msg.transferId)) return
         val transfer = transferMap[msg.transferId] ?: return
         val uri = transfer.localUri ?: return
 
@@ -176,6 +202,7 @@ class FileTransferManager(
         val transfer = transferMap[tid] ?: return
 
         try {
+            require(offset == transfer.bytesTransferred && data.isNotEmpty() && data.size <= 65536 && offset + data.size <= transfer.fileSize) { "Invalid file chunk" }
             synchronized(raf) {
                 raf.seek(offset)
                 raf.write(data)
@@ -193,11 +220,15 @@ class FileTransferManager(
             )
         } catch (e: Exception) {
             Log.e(tag, "Error writing incoming chunk", e)
+            cancelTransfer(tid)
         }
     }
 
     fun handleComplete(msg: FileCompleteMessage) {
         val tid = msg.transferId
+        val current = transferMap[tid] ?: return
+        if (current.direction != TransferDirection.RECEIVING || !incomingFileHandles.containsKey(tid)) return
+        if (current.bytesTransferred != current.fileSize) { cancelTransfer(tid); return }
         val raf = incomingFileHandles.remove(tid)
         try {
             raf?.close()
@@ -220,7 +251,7 @@ class FileTransferManager(
         Log.d(tag, "Transfer complete: ${transfer.fileName} saved to ${file?.absolutePath}")
     }
 
-    fun cancelTransfer(transferId: String) {
+    fun cancelTransfer(transferId: String, notifyPeer: Boolean = true) {
         val job = activeJobs.remove(transferId)
         job?.cancel()
 
@@ -232,10 +263,17 @@ class FileTransferManager(
         }
 
         val session = getActiveSession()
-        session?.sendMessage(FileCancelMessage(transferId = transferId))
+        if (notifyPeer) session?.sendMessage(FileCancelMessage(transferId = transferId))
+        incomingFiles.remove(transferId)?.delete()
 
         val transfer = transferMap[transferId] ?: return
         updateTransfer(transfer.copy(status = TransferStatus.CANCELLED))
+    }
+
+    fun onDisconnected() {
+        _pendingOffer.value = null
+        transferMap.values.filter { it.status == TransferStatus.TRANSFERRING || it.status == TransferStatus.WAITING_ACCEPT }
+            .forEach { cancelTransfer(it.id, notifyPeer = false) }
     }
 
     private fun updateTransfer(transfer: FileTransfer) {

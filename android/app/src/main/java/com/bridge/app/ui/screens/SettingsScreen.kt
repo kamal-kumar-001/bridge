@@ -16,9 +16,10 @@ import com.bridge.app.core.protocol.BridgeProtocol
 fun SettingsScreen(
     deviceName: String,
     onDeviceNameChanged: (String) -> Unit,
+    isClipboardSyncEnabled: Boolean,
+    onClipboardSyncChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isClipboardSyncEnabled by remember { mutableStateOf(true) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var tempName by remember { mutableStateOf(deviceName) }
 
@@ -124,11 +125,11 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Synchronize Clipboard", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                        Text("Automatically sync text between phone and computer", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                        Text("Send local clipboard changes while Android allows access. Off by default.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                     }
                     Switch(
                         checked = isClipboardSyncEnabled,
-                        onCheckedChange = { isClipboardSyncEnabled = it }
+                        onCheckedChange = onClipboardSyncChanged
                     )
                 }
             }
@@ -151,7 +152,7 @@ fun SettingsScreen(
 
                 Column {
                     Text("Download Location", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                    Text("Downloads/Bridge", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    Text("Bridge app storage (removed on uninstall)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                 }
             }
         }

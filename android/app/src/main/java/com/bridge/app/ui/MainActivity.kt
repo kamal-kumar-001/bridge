@@ -78,7 +78,19 @@ fun MainAppScreen(controller: ServiceController) {
     val discoveredDevices by controller.discoveredDevices.collectAsState()
     val activeTransfers by controller.fileTransferManager.activeTransfers.collectAsState()
     val pairedDevices by controller.pairedDeviceRepo.pairedDevices.collectAsState()
+    val clipboardEnabled by controller.clipboardManager.enabled.collectAsState()
     val pendingPairing by controller.pairingManager.pendingPairingRequest.collectAsState()
+
+    val pendingFile by controller.fileTransferManager.pendingOffer.collectAsState()
+    pendingFile?.let { offer ->
+        AlertDialog(
+            onDismissRequest = { controller.fileTransferManager.respondToOffer(false) },
+            title = { Text("Receive file?") },
+            text = { Text("${offer.message.fileName}\n${offer.message.fileSize} bytes\nSaved in Bridge app storage. Removed when the app is uninstalled.") },
+            confirmButton = { Button(onClick = { controller.fileTransferManager.respondToOffer(true) }) { Text("Receive") } },
+            dismissButton = { OutlinedButton(onClick = { controller.fileTransferManager.respondToOffer(false) }) { Text("Decline") } }
+        )
+    }
 
     var deviceName by remember { mutableStateOf(controller.keyStoreManager.deviceName) }
 
@@ -152,13 +164,15 @@ fun MainAppScreen(controller: ServiceController) {
             NavigationTab.DEVICES -> {
                 DevicesScreen(
                     pairedDevices = pairedDevices,
-                    onRevokeDevice = { controller.pairedDeviceRepo.revokeDevice(it) },
+                    onRevokeDevice = { controller.revokeDevice(it) },
                     modifier = Modifier.padding(paddingValues)
                 )
             }
             NavigationTab.SETTINGS -> {
                 SettingsScreen(
                     deviceName = deviceName,
+                    isClipboardSyncEnabled = clipboardEnabled,
+                    onClipboardSyncChanged = { controller.clipboardManager.setEnabled(it) },
                     onDeviceNameChanged = {
                         controller.keyStoreManager.deviceName = it
                         deviceName = it

@@ -160,6 +160,7 @@ class BridgeForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        controller.stop()
         scope.cancel()
     }
 

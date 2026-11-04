@@ -1,124 +1,74 @@
-# Bridge — Native Mac & Android Companion (Cross-Platform Ready: macOS, Windows, Linux)
+# Bridge
 
-Bridge brings a seamless Apple Continuity-like experience to Android and desktop operating systems without cloud accounts, complex network configuration, ADB, or proprietary vendor locks.
+A local-first Android and desktop companion, working toward a cross-platform alternative to device continuity features. No cloud account or relay service.
 
----
+**Status: development prototype, not a production-ready ecosystem.** Protocol v2 replaces the original plaintext prototype. Upgrade both ends together; v1 is refused. The separate clipboard-history app is not integrated yet.
 
-## Key Capabilities
+## This development slice
 
-- **Zero-Configuration Discovery**:
-  - **Standard Wi-Fi LAN**: Native mDNS / DNS-SD (`_bridge._tcp`) discovered via `NsdManager` on Android, Bonjour on macOS, Avahi on Linux, and Windows DNS-SD.
-  - **Personal Hotspot / Tethering Mode** (like iPhone + Mac): Dual-mode discovery with direct gateway probing (`<gateway>:52431`) and UDP broadcast beacons (`x.x.x.255:52431`) across wildcard `0.0.0.0`, overcoming Android chipset multicast filtering.
-- **Cross-Platform Peer Architecture**:
-  - Clean, OS-agnostic peer abstraction (`MACOS`, `WINDOWS`, `LINUX`, `ANDROID`).
-  - Bridge Protocol v1: 5-byte length-prefixed binary stream with JSON control frames (`0x01`) and raw 64KB binary chunk frames (`0x02`).
-  - The exact same Android app connects interchangeably to **macOS, Windows, or Linux** desktop clients.
-- **Mutual Security & Pairing**:
-  - Secure hardware-backed Android KeyStore identity.
-  - Mutual 6-digit Short Authentication String (SAS / PIN) pairing prompt.
-  - Persistent trusted device storage with instant revocation.
-- **Instant Bi-Directional Clipboard Sync**:
-  - SHA-256 rolling hash cache prevents reflection / echo loops.
-  - Persistent foreground service pushes incoming text to the Android clipboard.
-- **High-Speed File Transfer**:
-  - Direct TCP socket streaming in 64KB chunks utilizing full Wi-Fi / Hotspot local bandwidth (30–80+ MB/s).
-  - Native Android Share Sheet target (`ShareSheetActivity`) allows sharing photos, videos, PDFs, and text directly from any Android app to the connected desktop.
-  - Saves received files automatically into `Downloads/Bridge/` and registers them with `MediaScannerConnection` so they immediately appear in Gallery / Google Photos.
+- Android native app and a Python/Tk desktop window intended for macOS, Windows and Linux.
+- TLS 1.2 encrypted transport with a certificate presented by each side. First contact is not trusted automatically: compare a session-bound six-digit code on both screens, then approve on both devices. Later connections check the saved certificate pin. A changed certificate is refused.
+- Explicit text/link sharing and file offers. A receiving user accepts files before writing starts.
+- 64 KiB file chunks, strict framing/offset/size checks, 2 GiB per-file limit, filename checks and collision handling.
+- Desktop mDNS advertisement and UDP presence beacons. Manual phone-IP connection is available if multicast discovery is blocked. Discovery is not authentication.
+- Trusted-device revocation closes the connected session. Android clipboard-change sharing is a real saved setting, off by default.
 
----
+This is original implementation work using standard TLS libraries. No proprietary app was decompiled, copied or bypassed. See [research and decisions](docs/IMPLEMENTATION_NOTES.md).
 
-## Repository Structure
+## Run the desktop companion
 
-```
-bridge/
-├── docs/
-│   └── BRIDGE_PROTOCOL.md            # Complete Bridge Protocol v1 specification
-├── tools/
-│   └── desktop_bridge_agent.py       # Cross-platform desktop test harness (Mac/Win/Linux)
-├── android/                          # Native Android companion application
-│   ├── build.gradle.kts              # Root Gradle build script
-│   ├── settings.gradle.kts           # Gradle settings
-│   ├── gradle/
-│   │   ├── libs.versions.toml        # Version catalog (AGP 8.7, Kotlin 2.0, Compose, Coroutines)
-│   │   └── wrapper/
-│   └── app/
-│       ├── build.gradle.kts          # Jetpack Compose & Material 3 configurations
-│       ├── proguard-rules.pro
-│       └── src/main/
-│           ├── AndroidManifest.xml   # Permissions, Foreground Service, ShareSheet intent filters
-│           ├── res/                  # Strings, colors, themes, FileProvider XML
-│           └── java/com/bridge/app/
-│               ├── BridgeApplication.kt
-│               ├── core/
-│               │   ├── model/        # Device, OSType, Message, Transfer
-│               │   ├── protocol/     # PacketCodec, BridgeProtocol
-│               │   ├── crypto/       # CryptoEngine, KeyStoreManager
-│               │   ├── discovery/    # NsdDiscoveryManager, HotspotDiscoveryManager, DualDiscoveryCoordinator
-│               │   └── network/      # BridgeSession, BridgeServer, BridgeClient
-│               ├── features/
-│               │   ├── clipboard/    # ClipboardManagerHelper, ClipboardSyncManager
-│               │   ├── filetransfer/ # FileTransferManager, StorageHelper
-│               │   └── pairing/      # PairingManager, PairedDeviceRepository
-│               ├── service/          # BridgeForegroundService, ServiceController
-│               └── ui/               # Jetpack Compose UI (Screens, Components, Theme, Activities)
+Use Python 3.10 or newer with Tk support. Some Linux distributions package Tk separately as `python3-tk`; macOS/Windows Python distributions may include it.
+
+```sh
+python3 -m venv .venv
+# macOS/Linux:
+. .venv/bin/activate
+# Windows PowerShell instead: .venv\Scripts\Activate.ps1
+python -m pip install -r desktop/requirements.txt
+python tools/desktop_bridge_agent.py
 ```
 
----
+The desktop listens on local TCP port 52431. Allow local-network access in the OS firewall. Only use on a network you control. Connect the phone and desktop to the same Wi-Fi, or connect the desktop to the phone's hotspot. The desktop can connect to the phone's actual local IP; do not assume all Android hotspots use `192.168.43.1`.
 
-## Quick Start & Testing
+The Android app should discover the desktop's advertised service where the network permits it. If discovery fails, desktop **Connect by IP** can connect to the Android phone's local address. Router client isolation and some hotspot implementations block peer traffic; there is no claim to bypass them.
 
-### 1. Run the Desktop Agent (Mac / Windows / Linux)
+On first contact, keep both apps visible, compare the code, and confirm only if the codes match and you initiated the connection. Never approve an unexpected request. Text and file controls stay disabled until both sides agree. Files require a second, per-file acceptance because they write storage.
 
-Bridge includes a standalone desktop agent written in Python 3 that implements Bridge Protocol v1. Run it directly on your Mac, Windows PC, or Linux machine:
+Desktop identity/pins live in `~/.bridge/`. Do not share the private `identity.key`. Desktop files save into `~/Downloads/Bridge/`. **Forget connected device** removes the local pin and disconnects; revoke on the other device too if you want both to forget each other.
 
-```bash
-# On macOS:
-./tools/desktop_bridge_agent.py --os macos --name "MacBook Pro"
+## Android development
 
-# On Windows:
-python tools/desktop_bridge_agent.py --os windows --name "Windows PC"
+Open `android/` in Android Studio, using JDK 17 and Android SDK 35, or:
 
-# On Linux:
-python3 tools/desktop_bridge_agent.py --os linux --name "Linux Workstation"
+```sh
+cd android
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+# Windows: gradlew.bat :app:testDebugUnitTest :app:assembleDebug
 ```
 
-The desktop agent will start listening on port `52431` and begin broadcasting UDP hotspot beacons.
+Minimum Android version is 9 (API 28). Keep the app visible for pairing and incoming-file prompts. The foreground service supports the connection, not unrestricted access to Android's clipboard.
 
-### 2. Connect via Wi-Fi or Phone Hotspot
+Received Android files currently save to **app-specific external storage**, under `Android/data/com.bridge.app/files/Download/Bridge/` where available, and are removed on uninstall. Public Downloads export through MediaStore/Storage Access Framework is a remaining feature. They are not promised to appear in Photos or the public Downloads app.
 
-- **Over Wi-Fi**: Both devices discover each other automatically via mDNS. Tap **Connect** in the Android app.
-- **Over Phone Hotspot**:
-  1. Turn on Personal Hotspot on your Android phone.
-  2. Connect your Mac/PC to the phone's Hotspot Wi-Fi.
-  3. In the desktop agent terminal, run:
-     ```
-     bridge> connect 192.168.43.1
-     ```
-     *(Or Android auto-discovers your computer via the gateway probe)*
+Android restricts clipboard reads in the background. Manual Send Text and the Share Sheet are the reliable intended paths; a foreground service does not bypass OS restrictions. Automatic clipboard-change sending is opt-in and only works when Android grants clipboard access. Received text can update the phone clipboard after pairing; desktop received text is shown for manual copying. No clipboard-history app or desktop background clipboard watcher is included in this slice.
 
-### 3. Pair Devices
+## Validation
 
-1. In the desktop agent, run:
-   ```
-   bridge> pair
-   ```
-2. A pairing prompt will pop up on your Android screen with a 6-digit PIN (e.g. `482 195`).
-3. Tap **Allow**. Both devices are now securely linked.
+```sh
+python tools/test_protocol_simulation.py
+```
 
-### 4. Test Clipboard & File Transfer
+- 12 desktop tests cover TLS loopback pairing, both confirmations, unpaired-data refusal, changed pins, fragmented frames, malformed chunks, paths, persistence and file roundtrip/no-overwrite behavior.
+- 5 Android JVM tests cover real Kotlin JSON serialization/discrimination, cross-platform HELLO decoding, chunk framing and malformed/truncated input.
+- Kotlin Android compilation and JVM tests passed in the development environment.
+- Native Linux desktop pairing/connection/file acceptance/completion windows were visually inspected with isolated loopback peers.
+- **APK packaging is not verified**: the dex worker was killed under the available memory limits. No installable APK is claimed.
+- No physical Android-to-Mac/Windows/Linux test has been run. Android KeyStore/TLS provider behavior, hardware-backed key availability, Android UI pixels, Wi-Fi/hotspot discovery, mobile storage behavior, OS firewall permissions and actual throughput need device validation.
+- No measured Wi-Fi speed, automatic background clipboard guarantee, signed installer or production security audit is claimed.
 
-- **Send text from Mac/PC to phone**:
-  ```
-  bridge> clip Meeting at 5 PM: https://meet.google.com/abc-defg-hij
-  ```
-  *The text is immediately copied to your phone's clipboard.*
+## Next slices
 
-- **Send file from Mac/PC to phone**:
-  ```
-  bridge> send /path/to/sample.jpg
-  ```
-  *The file streams in 64KB blocks, saves to `Downloads/Bridge/sample.jpg`, and appears in your Android Photos app.*
-
-- **Send file or text from Android to Mac/PC**:
-  - Open Bridge -> tap **Send File** or **Send Text**.
-  - Or in Google Photos / Files / Browser, tap **Share** -> **Bridge**.
+1. Package and install Android; validate Android-to-desktop mutual TLS and pairing on real hardware before expanding features.
+2. Validate discovery/reconnect on Wi-Fi and phone hotspot, certificate changes and revocation.
+3. Public Downloads export, transfer progress/cancel UX, timeout/resource limits, desktop trusted-device management and native installers.
+4. Only then add notification features and the separate clipboard-history app, with explicit per-feature permissions.

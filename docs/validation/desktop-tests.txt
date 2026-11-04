@@ -1,0 +1,29 @@
+test_bad_chunk_size (test_core.CoreTests) ... ok
+test_bad_lengths (test_core.CoreTests) ... ok
+test_changed_pin_rejected (test_core.CoreTests) ... ok
+test_chunk (test_core.CoreTests) ... ok
+test_file_roundtrip_collision (test_core.CoreTests) ... ok
+test_fragmented_json (test_core.CoreTests) ... ok
+test_identity_persistence (test_core.CoreTests) ... ok
+test_invalid_chunk_order (test_core.CoreTests) ... ok
+test_paths (test_core.CoreTests) ... ok
+test_tls_pair_and_text (test_core.CoreTests) ... FAIL
+test_truncated_frame (test_core.CoreTests) ... ok
+test_unpaired_data_blocked (test_core.CoreTests) ... ok
+
+======================================================================
+FAIL: test_tls_pair_and_text (test_core.CoreTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/downloads/bridge/desktop/tests/test_core.py", line 62, in test_tls_pair_and_text
+    one,two,ea,eb=self.pair(Path(path))
+  File "/downloads/bridge/desktop/tests/test_core.py", line 52, in pair
+    one.start(); two.start(); wait(lambda: one.code is not None and two.code is not None)
+  File "/downloads/bridge/desktop/tests/test_core.py", line 19, in wait
+    if time.monotonic() > end: raise AssertionError('Timed out')
+AssertionError: Timed out
+
+----------------------------------------------------------------------
+Ran 12 tests in 5.173s
+
+FAILED (failures=1)

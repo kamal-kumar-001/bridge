@@ -11,6 +11,9 @@ class BridgeServer(
     private val localDeviceId: String,
     private val localDeviceName: String,
     private val port: Int = BridgeProtocol.DEFAULT_PORT,
+    private val onMessageReceived: (BridgeSession, com.bridge.app.core.model.BridgeMessage) -> Unit,
+    private val onChunkReceived: (BridgeSession, java.util.UUID, Long, ByteArray) -> Unit,
+    private val onDisconnected: (BridgeSession) -> Unit,
     private val onNewSession: (BridgeSession) -> Unit
 ) {
     private val tag = "BridgeServer"
@@ -25,7 +28,9 @@ class BridgeServer(
         scope.launch {
             try {
                 // Bind to wildcard 0.0.0.0 so we listen across Wi-Fi, Hotspot AP, and USB tethering
-                val ss = ServerSocket()
+                val ss = com.bridge.app.core.crypto.TlsIdentity.context().serverSocketFactory.createServerSocket() as javax.net.ssl.SSLServerSocket
+                ss.enabledProtocols = arrayOf("TLSv1.2")
+                ss.needClientAuth = true
                 ss.reuseAddress = true
                 ss.bind(InetSocketAddress("0.0.0.0", port))
                 serverSocket = ss
@@ -40,9 +45,9 @@ class BridgeServer(
                             isIncoming = true,
                             localDeviceId = localDeviceId,
                             localDeviceName = localDeviceName,
-                            onMessageReceived = { s, msg -> /* Dispatched by session listener */ },
-                            onChunkReceived = { s, tid, offset, data -> /* Dispatched */ },
-                            onDisconnected = { s -> Log.d(tag, "Session disconnected: ${s.peerDevice?.name}") }
+                            onMessageReceived = onMessageReceived,
+                            onChunkReceived = onChunkReceived,
+                            onDisconnected = onDisconnected
                         )
                         onNewSession(session)
                     } catch (e: Exception) {

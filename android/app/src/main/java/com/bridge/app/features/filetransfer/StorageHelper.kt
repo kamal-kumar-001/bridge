@@ -12,15 +12,16 @@ class StorageHelper(private val context: Context) {
     private val tag = "StorageHelper"
 
     fun getBridgeDownloadDirectory(): File {
-        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: context.filesDir
         val bridgeDir = File(downloadsDir, "Bridge")
-        if (!bridgeDir.exists()) {
-            bridgeDir.mkdirs()
-        }
+        check(bridgeDir.exists() || bridgeDir.mkdirs()) { "Cannot create download directory" }
         return bridgeDir
     }
 
     fun prepareDestinationFile(originalName: String): File {
+        require(originalName.isNotBlank() && originalName.toByteArray().size <= 200 && originalName != "." && originalName != "..")
+        require(originalName.none { it == '/' || it == '\\' || it == ':' || it.code < 32 }) { "Unsafe filename" }
         val dir = getBridgeDownloadDirectory()
         var targetFile = File(dir, originalName)
         if (!targetFile.exists()) return targetFile
