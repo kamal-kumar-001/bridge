@@ -28,4 +28,4 @@ These were product/architecture references, not reverse-engineering tools. Bridg
 
 ## Local results
 
-12 Python TLS/security tests pass. 5 Android JVM tests pass; native Android Kotlin compilation passes. APK dex packaging repeatedly exceeded available build resources, so no APK was produced or delivered. Desktop loopback pairing, mutual confirmation, file acceptance and completed transfer were inspected as actual native windows. Physical phone, Mac and Windows validation remain outstanding.
+12 Python TLS/security tests pass. 5 Android JVM tests pass; native Android Kotlin compilation passes. Initial APK dex packaging failed while a stale Kotlin compiler daemon held memory. A single resource-cleaned retry succeeded in 79 seconds. The debug APK passed signature/package inspection and was delivered separately; it is not physically runtime-tested. Mac + Android is the current priority, with other desktop product work deferred. Desktop loopback pairing, mutual confirmation, file acceptance and completed transfer were inspected as actual native windows. Physical phone, Mac and Windows validation remain outstanding.

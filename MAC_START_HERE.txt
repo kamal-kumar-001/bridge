@@ -1,0 +1,44 @@
+BRIDGE - MAC + ANDROID TEST
+
+This is a development test, not a signed or notarized Mac app.
+The Mac launcher has not been run on a physical Mac yet.
+
+1. Extract this ZIP into a folder you can write to, such as Downloads.
+2. Double-click Start Bridge.command. It needs Python 3.10+ with Tk.
+   If Python is missing, install the macOS Python package from python.org.
+   No Homebrew, administrator commands or system Python changes are needed.
+   If macOS refuses to open the launcher, open Terminal, type bash followed
+   by a space, drag Start Bridge.command into the window, then press Return.
+   Do not disable Gatekeeper or other security settings.
+3. First run asks before creating .venv and downloading dependencies.
+   Keep Terminal open. Allow local network access if macOS asks.
+4. Install the supplied Bridge debug APK on your Android phone. Open Bridge.
+   Keep both apps visible and put both devices on the same Wi-Fi, or connect
+   the Mac to the phone hotspot. No cloud account or USB debugging needed.
+5. If the phone lists your Mac, connect there. If not, enter the phone's
+   actual local IP in Mac Bridge and choose Connect by IP. The phone listens
+   on TCP 52431. Do not guess the hotspot address. Some routers/hotspots
+   block device-to-device connections; this test cannot bypass that.
+6. Compare the six-digit code on BOTH screens. Approve only if they match
+   and you started this connection. Do not approve unexpected requests.
+7. Send a short test text each way, then a small non-sensitive file each way.
+   Accept the file on the receiving screen. Do not test with private data yet.
+
+CURRENT LIMITS
+- Android-to-Mac TLS/KeyStore, discovery and transfer runtime are unverified.
+- Received Mac files: ~/Downloads/Bridge/.
+- Received Android files: Bridge app-specific storage, removed on uninstall.
+  Public Downloads export is not ready yet.
+- Desktop text is displayed for manual copy. Incoming phone text updates
+  the clipboard after pairing. Automatic outgoing clipboard changes are off
+  by default and subject to Android foreground clipboard restrictions.
+- No signed Mac installer, automatic background clipboard guarantee,
+  notifications, remote control or separate clipboard-history app.
+
+IF SOMETHING FAILS
+Send a screenshot of both apps or the Terminal error, plus whether you used
+Wi-Fi or phone hotspot. Do not send passwords, tokens or private clipboard
+contents. You do not need to configure another GitHub token.
+
+Build source: commit d65d3b2e7ef2a71209b93b92919780cb89786e13,
+plus this launch guide/launcher and updated packaging notes.

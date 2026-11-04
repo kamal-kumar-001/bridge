@@ -1,6 +1,6 @@
 # Bridge
 
-A local-first Android and desktop companion, working toward a cross-platform alternative to device continuity features. No cloud account or relay service.
+A local-first Android and desktop companion. Current priority is macOS + Android; Windows and Linux product work is deferred. No cloud account or relay service.
 
 **Status: development prototype, not a production-ready ecosystem.** Protocol v2 replaces the original plaintext prototype. Upgrade both ends together; v1 is refused. The separate clipboard-history app is not integrated yet.
 
@@ -14,6 +14,10 @@ A local-first Android and desktop companion, working toward a cross-platform alt
 - Trusted-device revocation closes the connected session. Android clipboard-change sharing is a real saved setting, off by default.
 
 This is original implementation work using standard TLS libraries. No proprietary app was decompiled, copied or bypassed. See [research and decisions](docs/IMPLEMENTATION_NOTES.md).
+
+## Mac + Android first
+
+See `MAC_START_HERE.txt`. On Mac, `Start Bridge.command` checks Python/Tk, asks before installing dependencies into a folder-local virtual environment and opens the desktop window. It is source-based test tooling, not a signed Mac app. Mac execution still needs a real-device test.
 
 ## Run the desktop companion
 
@@ -62,13 +66,13 @@ python tools/test_protocol_simulation.py
 - 5 Android JVM tests cover real Kotlin JSON serialization/discrimination, cross-platform HELLO decoding, chunk framing and malformed/truncated input.
 - Kotlin Android compilation and JVM tests passed in the development environment.
 - Native Linux desktop pairing/connection/file acceptance/completion windows were visually inspected with isolated loopback peers.
-- **APK packaging is not verified**: the dex worker was killed under the available memory limits. No installable APK is claimed.
+- **Debug APK packaging passed** after stopping a stale compiler daemon and using one worker with a bounded heap. `apksigner` verified the v2 debug signature; `aapt2` verified package `com.bridge.app`, version `0.1.0`, min API28/target35. SHA-256: `db8633d05c5354a4243fbd32696167e37b9360288a1bcd3b9e12656cd9fd7e8c`. This does not prove installation or runtime behavior. The APK is a debug test build, not a release-signed product.
 - No physical Android-to-Mac/Windows/Linux test has been run. Android KeyStore/TLS provider behavior, hardware-backed key availability, Android UI pixels, Wi-Fi/hotspot discovery, mobile storage behavior, OS firewall permissions and actual throughput need device validation.
 - No measured Wi-Fi speed, automatic background clipboard guarantee, signed installer or production security audit is claimed.
 
 ## Next slices
 
-1. Package and install Android; validate Android-to-desktop mutual TLS and pairing on real hardware before expanding features.
+1. Install the debug Android APK and run the Mac launcher; validate Android-to-Mac mutual TLS and pairing on real hardware before expanding features.
 2. Validate discovery/reconnect on Wi-Fi and phone hotspot, certificate changes and revocation.
 3. Public Downloads export, transfer progress/cancel UX, timeout/resource limits, desktop trusted-device management and native installers.
 4. Only then add notification features and the separate clipboard-history app, with explicit per-feature permissions.
