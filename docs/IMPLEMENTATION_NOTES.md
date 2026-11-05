@@ -63,3 +63,31 @@ before it clears the active session. This prevents the collector from racing the
 callback and hiding the new error card. TLS behavior is unchanged from 0.1.1-dev.
 It updates either earlier debug APK with the same signing certificate. Physical
 runtime and Android UI pixel checks are still outstanding.
+
+## Android post-handshake writer correction (2026-11-05)
+
+User's updated physical-device logs showed repeated `Encrypted connection ready`
+followed by drops. Local `Text sent` / `File offered` are not delivery receipts.
+Review found that UI callbacks for pairing approval, outgoing text and incoming
+file acceptance could perform TLS socket writes on Android's main thread.
+Android's NetworkOnMainThreadException rule forbids that. The session caught write
+exceptions and closed itself. This is a concrete source defect, but a phone stack
+trace was not available to prove that it caused every reported disconnection.
+Reference: https://developer.android.com/reference/android/os/NetworkOnMainThreadException
+
+`0.1.3-dev` / version code 4 sends every outgoing frame through one bounded,
+ordered IO writer. UI callbacks enqueue and return without socket writes.
+File workers wait for each chunk to provide backpressure, with copied buffer
+ownership. Failed/rejected writes are recorded and close the connection, never
+fall back to caller-thread IO. Closing cancels queued tasks. Old session collectors
+cannot overwrite a newer session's status. The previously local diagnostic-order
+fix is included. TLS identity, certificate pins, code checks and file acceptance
+are unchanged. No automatic reconnect loop was added.
+
+12 Android JVM tests cover codec, alias selection, off-caller-thread FIFO writes,
+a deterministic main-thread network guard that rejects the old direct path,
+write-error propagation, file-write completion and closed-writer rejection.
+The guard is a JVM regression model, not an Android device reproduction.
+Kotlin/APK build and signature/package inspection pass. Existing 12 desktop TLS
+security tests pass. Physical Android runtime and Android error-card pixels remain
+unverified. Keep the Mac client unchanged for one updated-APK connection test.

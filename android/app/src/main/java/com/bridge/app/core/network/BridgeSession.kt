@@ -44,6 +44,11 @@ class BridgeSession(
     var verificationCode: String = ""
         private set
     private val localNonce = com.bridge.app.core.crypto.CryptoEngine.generateNonce()
+    private val writer = FrameWriter { error ->
+        recordFailure("Connection write failed", error)
+        Log.e(tag, "Connection writer failed", error)
+        close()
+    }
     private var started = false
     @Volatile var failure: String? = null
         private set
@@ -199,23 +204,23 @@ class BridgeSession(
             message !is PairRequestMessage && message !is PairResponseMessage &&
             message !is PingMessage && message !is PongMessage && message !is DisconnectMessage) return
         val out = outputStream ?: return
+        val jsonBytes = BridgeProtocol.encodeMessage(message)
         try {
-            val jsonBytes = BridgeProtocol.encodeMessage(message)
-            PacketCodec.writeJsonFrame(out, jsonBytes)
-        } catch (e: Exception) {
-            Log.e(tag, "Error sending message: ${message.type}", e)
-            close()
+            writer.write { PacketCodec.writeJsonFrame(out, jsonBytes) }
+        } catch (error: Exception) {
+            // The writer records the failure and closes the session. Never write on the caller thread.
         }
     }
 
     fun sendChunk(transferId: UUID, offset: Long, chunk: ByteArray, length: Int) {
         check(authenticated) { "Pairing required" }
-        val out = outputStream ?: return
-        try {
-            PacketCodec.writeChunkFrame(out, transferId, offset, chunk, length)
-        } catch (e: Exception) {
-            Log.e(tag, "Error sending chunk for $transferId at offset $offset", e)
-            close()
+        val out = outputStream ?: throw java.io.IOException("Disconnected")
+        require(length in 1..65536 && length <= chunk.size)
+        val owned = chunk.copyOf(length)
+        // Called by the file IO worker, not the UI. Wait bounds memory and protects buffer reuse.
+        writer.write(wait = true) {
+            check(authenticated) { "Pairing required" }
+            PacketCodec.writeChunkFrame(out, transferId, offset, owned, owned.size)
         }
     }
 
@@ -224,6 +229,7 @@ class BridgeSession(
         authenticated = false
         _connectionStatus.value = ConnectionStatus.DISCONNECTED
         scope.cancel()
+        writer.close()
         try {
             socket.close()
         } catch (e: Exception) {

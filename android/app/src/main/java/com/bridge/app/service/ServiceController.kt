@@ -126,6 +126,7 @@ class ServiceController private constructor(private val appContext: Context) {
 
         scope.launch {
             session.connectionStatus.collect { status ->
+                if (_activeSession.value != session) return@collect
                 _connectionStatus.value = status
                 if (status == ConnectionStatus.CONNECTED) {
                     _connectedDevice.value = session.peerDevice
