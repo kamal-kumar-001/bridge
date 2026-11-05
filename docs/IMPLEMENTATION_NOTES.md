@@ -55,3 +55,11 @@ pass. No AndroidKeyStore provider/emulator or physical phone is available here;
 the exact device failure is not reproduced, and the new error card's pixels are
 not inspected. A single updated-APK test against the unchanged Mac client is
 still required. Do not claim the user's connection is fixed until it succeeds.
+
+### Diagnostic ordering follow-up
+
+`0.1.2-dev` / code 3 also captures the failure in the disconnect state collector
+before it clears the active session. This prevents the collector from racing the
+callback and hiding the new error card. TLS behavior is unchanged from 0.1.1-dev.
+It updates either earlier debug APK with the same signing certificate. Physical
+runtime and Android UI pixel checks are still outstanding.

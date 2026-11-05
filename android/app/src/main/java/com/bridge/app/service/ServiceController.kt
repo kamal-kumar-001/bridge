@@ -131,6 +131,7 @@ class ServiceController private constructor(private val appContext: Context) {
                     _connectedDevice.value = session.peerDevice
                 } else if (status == ConnectionStatus.DISCONNECTED) {
                     if (_activeSession.value == session) {
+                        session.failure?.let { _lastConnectionError.value = it }
                         _activeSession.value = null
                         _connectedDevice.value = null
                     }
