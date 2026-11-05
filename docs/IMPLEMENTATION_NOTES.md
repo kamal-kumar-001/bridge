@@ -29,3 +29,29 @@ These were product/architecture references, not reverse-engineering tools. Bridg
 ## Local results
 
 12 Python TLS/security tests pass. 5 Android JVM tests pass; native Android Kotlin compilation passes. Initial APK dex packaging failed while a stale Kotlin compiler daemon held memory. A single resource-cleaned retry succeeded in 79 seconds. The debug APK passed signature/package inspection and was delivered separately; it is not physically runtime-tested. Mac + Android is the current priority, with other desktop product work deferred. Desktop loopback pairing, mutual confirmation, file acceptance and completed transfer were inspected as actual native windows. Physical phone, Mac and Windows validation remain outstanding.
+
+## Android TLS signing correction (2026-11-05)
+
+Real Mac feedback showed repeated `Unexpected EOF`; discovery was visible on Android.
+An EOF alone does not prove a cause. Source review found a concrete AndroidKeyStore
+configuration defect: the old identity authorized only SHA-256, while Android's TLS
+provider may hash internally and request raw `NONEwithECDSA` signing. Android's
+`KeyGenParameterSpec.Builder.setDigests` documentation explicitly recommends
+`DIGEST_NONE` for TLS client/server keys:
+https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.Builder#setDigests(java.lang.String...)
+
+The correction uses a distinct `bridge_tls_key_v2` EC P-256 alias, authorized for
+NONE/SHA-256/SHA-384/SHA-512 signing. The legacy key is preserved, not deleted.
+An explicit key manager selects only this alias for either TLS direction. No
+plaintext fallback, certificate bypass, automatic pin reset or skipped pairing
+was added. If a device previously completed pairing, a changed certificate must
+still be checked and explicitly revoked/repaired through the existing UI.
+
+Android now displays transport failures instead of swallowing them in logcat.
+Version 0.1.1-dev / code 2 updates the old debug build with the same signing cert.
+Seven JVM tests (including two alias selection tests), Kotlin compilation/APK
+packaging and the existing 12 desktop tests pass. APK signature/package checks
+pass. No AndroidKeyStore provider/emulator or physical phone is available here;
+the exact device failure is not reproduced, and the new error card's pixels are
+not inspected. A single updated-APK test against the unchanged Mac client is
+still required. Do not claim the user's connection is fixed until it succeeds.

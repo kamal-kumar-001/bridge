@@ -73,6 +73,7 @@ enum class NavigationTab(val label: String) {
 fun MainAppScreen(controller: ServiceController) {
     var selectedTab by remember { mutableStateOf(NavigationTab.HOME) }
 
+    val lastConnectionError by controller.lastConnectionError.collectAsState()
     val connectionStatus by controller.connectionStatus.collectAsState()
     val connectedDevice by controller.connectedDevice.collectAsState()
     val discoveredDevices by controller.discoveredDevices.collectAsState()
@@ -149,6 +150,7 @@ fun MainAppScreen(controller: ServiceController) {
             NavigationTab.HOME -> {
                 HomeScreen(
                     connectionStatus = connectionStatus,
+                    lastConnectionError = lastConnectionError,
                     connectedDevice = connectedDevice,
                     discoveredDevices = discoveredDevices,
                     activeTransfers = activeTransfers,

@@ -45,6 +45,12 @@ class BridgeSession(
         private set
     private val localNonce = com.bridge.app.core.crypto.CryptoEngine.generateNonce()
     private var started = false
+    @Volatile var failure: String? = null
+        private set
+
+    private fun recordFailure(stage: String, error: Exception) {
+        failure = "$stage: ${error.javaClass.simpleName}: ${error.message ?: "no details"}".take(350)
+    }
 
     fun authorize() {
         authenticated = true
@@ -89,6 +95,7 @@ class BridgeSession(
                 heartbeatLoop()
             }
         } catch (e: Exception) {
+            recordFailure("TLS / initial handshake failed", e)
             Log.e(tag, "Failed to start session", e)
             close()
         }
@@ -127,6 +134,7 @@ class BridgeSession(
                 }
             } catch (e: Exception) {
                 if (scope.isActive) {
+                    recordFailure("Connection read failed", e)
                     Log.e(tag, "Error reading from socket", e)
                 }
                 break

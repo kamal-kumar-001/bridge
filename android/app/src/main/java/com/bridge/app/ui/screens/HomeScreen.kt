@@ -27,6 +27,7 @@ import com.bridge.app.ui.theme.AccentGreen
 @Composable
 fun HomeScreen(
     connectionStatus: ConnectionStatus,
+    lastConnectionError: String? = null,
     connectedDevice: PeerDevice?,
     discoveredDevices: List<PeerDevice>,
     activeTransfers: List<FileTransfer>,
@@ -89,6 +90,18 @@ fun HomeScreen(
                 connectedDevice = connectedDevice,
                 onDisconnect = onDisconnect
             )
+        }
+
+        if (lastConnectionError != null) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Connection failed", fontWeight = FontWeight.Bold)
+                        Text(lastConnectionError, style = MaterialTheme.typography.bodyMedium)
+                        Text("Send a screenshot of this message. Do not change network security settings.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
         }
 
         // Quick Actions Row

@@ -13,7 +13,8 @@ class KeyStoreManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("bridge_identity_prefs", Context.MODE_PRIVATE)
 
     companion object {
-        private const val KEY_ALIAS = "bridge_device_key"
+        // Keep the legacy key intact. Key authorizations cannot be changed in place.
+        const val KEY_ALIAS = "bridge_tls_key_v2"
         private const val PREF_DEVICE_ID = "pref_device_id"
         private const val PREF_DEVICE_NAME = "pref_device_name"
     }
@@ -53,7 +54,9 @@ class KeyStoreManager(private val context: Context) {
             KEY_ALIAS,
             KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
         ).run {
-            setDigests(KeyProperties.DIGEST_SHA256)
+            setAlgorithmParameterSpec(java.security.spec.ECGenParameterSpec("secp256r1"))
+            // Conscrypt hashes the TLS transcript before calling NONEwithECDSA.
+            setDigests(KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA384, KeyProperties.DIGEST_SHA512)
             build()
         }
 

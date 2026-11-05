@@ -10,9 +10,13 @@ import javax.net.ssl.*
 object TlsIdentity {
     fun context(): SSLContext {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val factory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply {
-            init(store, null)
-        }
+        val alias = KeyStoreManager.KEY_ALIAS
+        val key = store.getKey(alias, null) as? java.security.PrivateKey
+            ?: error("Bridge TLS identity is missing. Restart Bridge.")
+        val chain = store.getCertificateChain(alias)?.map { it as X509Certificate }?.toTypedArray()
+            ?: error("Bridge TLS certificate is missing.")
+        // Never let the platform choose another (legacy) alias in this app's store.
+        val manager = PinnedAliasKeyManager(alias, key, chain)
         val trust = object : X509TrustManager {
             override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
             override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {
@@ -20,7 +24,7 @@ object TlsIdentity {
             }
             override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) = checkClientTrusted(chain, authType)
         }
-        return SSLContext.getInstance("TLS").apply { init(factory.keyManagers, arrayOf(trust), SecureRandom()) }
+        return SSLContext.getInstance("TLS").apply { init(arrayOf(manager), arrayOf(trust), SecureRandom()) }
     }
 
     fun fingerprint(certificate: java.security.cert.Certificate): String =

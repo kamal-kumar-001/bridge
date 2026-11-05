@@ -38,6 +38,9 @@ class ServiceController private constructor(private val appContext: Context) {
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
 
+    private val _lastConnectionError = MutableStateFlow<String?>(null)
+    val lastConnectionError = _lastConnectionError.asStateFlow()
+
     private val _connectedDevice = MutableStateFlow<PeerDevice?>(null)
     val connectedDevice: StateFlow<PeerDevice?> = _connectedDevice.asStateFlow()
 
@@ -93,6 +96,7 @@ class ServiceController private constructor(private val appContext: Context) {
 
     fun connectToDevice(device: PeerDevice) {
         scope.launch {
+            _lastConnectionError.value = null
             _connectionStatus.value = ConnectionStatus.CONNECTING
             val result = bridgeClient.connect(
                 host = device.host,
@@ -104,7 +108,8 @@ class ServiceController private constructor(private val appContext: Context) {
 
             result.onSuccess { session ->
                 attachSession(session)
-            }.onFailure {
+            }.onFailure { error ->
+                _lastConnectionError.value = "Connect failed: ${error.javaClass.simpleName}: ${error.message}".take(350)
                 _connectionStatus.value = ConnectionStatus.DISCONNECTED
             }
         }
@@ -116,6 +121,7 @@ class ServiceController private constructor(private val appContext: Context) {
             session.close()
             return
         }
+        _lastConnectionError.value = null
         _activeSession.value = session
 
         scope.launch {
@@ -171,6 +177,7 @@ class ServiceController private constructor(private val appContext: Context) {
     }
 
     private fun onSessionDisconnected(session: BridgeSession) {
+        if (_activeSession.value == session) session.failure?.let { _lastConnectionError.value = it }
         pairingManager.clear(session)
         fileTransferManager.onDisconnected()
         if (_activeSession.value == session) {

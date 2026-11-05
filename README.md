@@ -76,3 +76,12 @@ python tools/test_protocol_simulation.py
 2. Validate discovery/reconnect on Wi-Fi and phone hotspot, certificate changes and revocation.
 3. Public Downloads export, transfer progress/cancel UX, timeout/resource limits, desktop trusted-device management and native installers.
 4. Only then add notification features and the separate clipboard-history app, with explicit per-feature permissions.
+
+### Android handshake update
+
+`0.1.1-dev` corrects Android TLS key signing authorization and adds visible
+connection error details. Keep the existing Mac launcher. Install the newer
+APK over the old app, then try one connection and compare both pairing codes.
+This correction is source-verified and build/test checked, not yet verified on
+a physical Android + Mac pair. See `docs/IMPLEMENTATION_NOTES.md` for the cause
+candidate, tests and limits. Do not uninstall or clear app data just to update.
